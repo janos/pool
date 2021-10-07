@@ -174,7 +174,7 @@ func (pq *priorityQueue) remove(i *item) {
 
 func (pq *priorityQueue) prune(f func(v interface{}) error, cb func(key string)) error {
 	now := nowFunc()
-	for i := pq.peek(); i != nil && i.deadtime.Before(now); i = pq.peek() {
+	for i := pq.peek(); i != nil && !i.deadtime.After(now); i = pq.peek() {
 		v := heap.Pop(pq)
 		if i == nil {
 			break
