@@ -110,7 +110,7 @@ func (p *Expiring) Clear() error {
 	for k, v := range p.m {
 		delete(p.m, k)
 		if p.destructor != nil {
-			if err := p.destructor(v); err != nil {
+			if err := p.destructor(v.value); err != nil {
 				return fmt.Errorf("close %s: %w", k, err)
 			}
 		}
