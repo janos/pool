@@ -57,7 +57,7 @@ func TestExpiring(t *testing.T) {
 	assertEqual(t, destructed, []string{})
 
 	pool.SetNowFunc(func() time.Time {
-		return time.Now().Add(time.Hour)
+		return time.Now().Add(time.Hour + time.Minute)
 	})
 	defer pool.SetNowFunc(time.Now)
 
