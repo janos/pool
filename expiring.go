@@ -158,31 +158,27 @@ func (pq *priorityQueue) Pop() interface{} {
 	return i
 }
 
-func (pq priorityQueue) peek() *item {
-	l := len(pq)
-	if l == 0 {
-		return nil
-	}
-	return pq[l-1]
-}
-
 func (pq *priorityQueue) remove(i *item) {
 	if i.index >= 0 {
 		heap.Remove(pq, i.index)
 	}
 }
 
-func (pq *priorityQueue) prune(f func(v interface{}) error, cb func(key string)) error {
+func (pq *priorityQueue) prune(destructor func(v interface{}) error, callback func(key string)) error {
 	now := nowFunc()
-	for i := pq.peek(); i != nil && !i.deadtime.After(now); i = pq.peek() {
+	for l := pq.Len(); l > 0; l = pq.Len() {
 		v := heap.Pop(pq)
-		if i == nil {
+		if v == nil {
 			break
 		}
-		i = v.(*item)
-		cb(i.key)
-		if f != nil {
-			if err := f(i.value); err != nil {
+		i := v.(*item)
+		if !i.deadtime.Before(now) {
+			heap.Push(pq, i)
+			break
+		}
+		callback(i.key)
+		if destructor != nil {
+			if err := destructor(i.value); err != nil {
 				return err
 			}
 		}
