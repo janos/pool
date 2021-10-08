@@ -167,15 +167,12 @@ func (pq *priorityQueue) remove(i *item) {
 func (pq *priorityQueue) prune(destructor func(v interface{}) error, callback func(key string)) error {
 	now := nowFunc()
 	for l := pq.Len(); l > 0; l = pq.Len() {
+		root := (*pq)[0]
+		if !root.deadtime.Before(now) {
+			break
+		}
 		v := heap.Pop(pq)
-		if v == nil {
-			break
-		}
 		i := v.(*item)
-		if !i.deadtime.Before(now) {
-			heap.Push(pq, i)
-			break
-		}
 		callback(i.key)
 		if destructor != nil {
 			if err := destructor(i.value); err != nil {
