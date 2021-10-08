@@ -192,7 +192,7 @@ func TestExpiring_Prune(t *testing.T) {
 	assertEqual(t, destructed, []string{"key2"})
 
 	pool.SetNowFunc(func() time.Time {
-		return time.Now().Add(time.Hour)
+		return time.Now().Add(time.Hour + time.Minute)
 	})
 	defer pool.SetNowFunc(time.Now)
 
