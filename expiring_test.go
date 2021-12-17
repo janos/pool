@@ -19,12 +19,12 @@ func TestExpiring(t *testing.T) {
 	destructed := make([]string, 0)
 
 	p := pool.NewExpiring(
-		func(key string) (interface{}, error) {
+		func(key string) (string, error) {
 			constructed = append(constructed, key)
 			return key, nil
 		},
-		func(v interface{}) error {
-			destructed = append(destructed, v.(string))
+		func(v string) error {
+			destructed = append(destructed, v)
 			return nil
 		},
 	)
@@ -90,12 +90,12 @@ func TestExpiring_Release_unknownKey(t *testing.T) {
 	destructed := make([]string, 0)
 
 	p := pool.NewExpiring(
-		func(key string) (interface{}, error) {
+		func(key string) (string, error) {
 			constructed = append(constructed, key)
 			return key, nil
 		},
-		func(v interface{}) error {
-			destructed = append(destructed, v.(string))
+		func(v string) error {
+			destructed = append(destructed, v)
 			return nil
 		},
 	)
@@ -108,15 +108,20 @@ func TestExpiring_Release_unknownKey(t *testing.T) {
 
 func TestExpiring_Clear(t *testing.T) {
 	constructed := make([]string, 0)
-	destructed := make([]string, 0)
+	destructed := make([]time.Time, 0)
+
+	values := map[string]time.Time{
+		"key1": time.Now(),
+		"key2": time.Now().Add(time.Hour),
+	}
 
 	p := pool.NewExpiring(
-		func(key string) (interface{}, error) {
+		func(key string) (time.Time, error) {
 			constructed = append(constructed, key)
-			return key, nil
+			return values[key], nil
 		},
-		func(v interface{}) error {
-			destructed = append(destructed, v.(string))
+		func(v time.Time) error {
+			destructed = append(destructed, v)
 			return nil
 		},
 	)
@@ -129,20 +134,22 @@ func TestExpiring_Clear(t *testing.T) {
 	}
 
 	assertEqual(t, constructed, []string{"key1", "key2"})
-	assertEqual(t, destructed, []string{})
+	assertEqual(t, destructed, []time.Time{})
 
 	p.Release("key1", time.Hour)
 
 	assertEqual(t, constructed, []string{"key1", "key2"})
-	assertEqual(t, destructed, []string{})
+	assertEqual(t, destructed, []time.Time{})
 
 	if err := p.Clear(); err != nil {
 		t.Fatal(err)
 	}
 
 	assertEqual(t, constructed, []string{"key1", "key2"})
-	sort.Strings(destructed) // destruction order is not preserved on clear
-	assertEqual(t, destructed, []string{"key1", "key2"})
+	sort.Slice(destructed, func(i, j int) bool {
+		return destructed[i].Before(destructed[j])
+	}) // destruction order is not preserved on clear
+	assertEqual(t, destructed, []time.Time{values["key1"], values["key2"]})
 }
 
 func TestExpiring_Prune(t *testing.T) {
@@ -150,12 +157,12 @@ func TestExpiring_Prune(t *testing.T) {
 	destructed := make([]string, 0)
 
 	p := pool.NewExpiring(
-		func(key string) (interface{}, error) {
+		func(key string) (string, error) {
 			constructed = append(constructed, key)
 			return key, nil
 		},
-		func(v interface{}) error {
-			destructed = append(destructed, v.(string))
+		func(v string) error {
+			destructed = append(destructed, v)
 			return nil
 		},
 	)
@@ -203,7 +210,7 @@ func TestExpiring_Prune(t *testing.T) {
 	assertEqual(t, destructed, []string{"key2", "key3", "key1"})
 }
 
-func assertEqual(t *testing.T, got, want interface{}) {
+func assertEqual[T any](t *testing.T, got, want T) {
 	t.Helper()
 
 	if !reflect.DeepEqual(got, want) {

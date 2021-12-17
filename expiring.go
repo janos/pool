@@ -18,46 +18,46 @@ import (
 // The elements will be evicted from the pool only on the next Get function call
 // or Prune function call. There is no assurances that the eviction will happen
 // at the expiration time, just that it will not happen before.
-type Expiring struct {
-	constructor func(key string) (interface{}, error)
-	destructor  func(interface{}) error
-	pq          *priorityQueue
-	m           map[string]*item
+type Expiring[T any] struct {
+	constructor func(key string) (T, error)
+	destructor  func(T) error
+	pq          *priorityQueue[T]
+	m           map[string]*item[T]
 	mu          sync.Mutex
 }
 
 // NewExpiring creates a new Expiring pool with constructor and destructor for
 // functions for pool elements.
-func NewExpiring(
-	constructor func(key string) (interface{}, error), // function that construct new elements
-	destructor func(interface{}) error,
-) *Expiring {
-	pq := make(priorityQueue, 0)
-	return &Expiring{
+func NewExpiring[T any](
+	constructor func(key string) (T, error), // function that construct new elements
+	destructor func(T) error,
+) *Expiring[T] {
+	pq := make(priorityQueue[T], 0)
+	return &Expiring[T]{
 		constructor: constructor,
 		destructor:  destructor,
 		pq:          &pq,
-		m:           make(map[string]*item),
+		m:           make(map[string]*item[T]),
 	}
 }
 
 // Get retrieves a value from the pool referenced by the key. If the value is
 // not in the pool, a new instance will be created using the pool's constructor
 // function.
-func (p *Expiring) Get(key string) (interface{}, error) {
+func (p *Expiring[T]) Get(key string) (t T, err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	i, ok := p.m[key]
 	if !ok {
 		if err := p.Prune(); err != nil {
-			return nil, err
+			return t, err
 		}
 		v, err := p.constructor(key)
 		if err != nil {
-			return nil, err
+			return t, err
 		}
-		p.m[key] = &item{
+		p.m[key] = &item[T]{
 			value:      v,
 			refCounter: 1,
 			index:      -1,
@@ -70,7 +70,7 @@ func (p *Expiring) Get(key string) (interface{}, error) {
 	p.pq.remove(i)
 
 	if err := p.Prune(); err != nil {
-		return nil, err
+		return t, err
 	}
 
 	return i.value, nil
@@ -78,7 +78,7 @@ func (p *Expiring) Get(key string) (interface{}, error) {
 
 // Release marks the key in pool as no longer used by the previous Get caller
 // and sets it eventual expiration time.
-func (p *Expiring) Release(key string, ttl time.Duration) {
+func (p *Expiring[T]) Release(key string, ttl time.Duration) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -95,12 +95,12 @@ func (p *Expiring) Release(key string, ttl time.Duration) {
 }
 
 // Prune removes all expired elements.
-func (p *Expiring) Prune() error {
+func (p *Expiring[T]) Prune() error {
 	return p.pq.prune(p.destructor, func(key string) { delete(p.m, key) })
 }
 
 // Clear removes all elements in the pool regardless if they are expired or not.
-func (p *Expiring) Clear() error {
+func (p *Expiring[T]) Clear() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -118,8 +118,8 @@ func (p *Expiring) Clear() error {
 	return nil
 }
 
-type item struct {
-	value      interface{} // The value of the item; arbitrary.
+type item[T any] struct {
+	value      T // The value of the item; arbitrary.
 	deadtime   time.Time
 	refCounter int
 	index      int // The index of the item in the heap, needed by remove.
@@ -127,28 +127,28 @@ type item struct {
 }
 
 // A priorityQueue implements heap.Interface.
-type priorityQueue []*item
+type priorityQueue[T any] []*item[T]
 
-func (pq priorityQueue) Len() int { return len(pq) }
+func (pq priorityQueue[T]) Len() int { return len(pq) }
 
-func (pq priorityQueue) Less(i, j int) bool {
+func (pq priorityQueue[T]) Less(i, j int) bool {
 	return pq[i].deadtime.Before(pq[j].deadtime)
 }
 
-func (pq priorityQueue) Swap(i, j int) {
+func (pq priorityQueue[T]) Swap(i, j int) {
 	pq[i], pq[j] = pq[j], pq[i]
 	pq[i].index = i
 	pq[j].index = j
 }
 
-func (pq *priorityQueue) Push(x interface{}) {
+func (pq *priorityQueue[T]) Push(x any) {
 	n := len(*pq)
-	i := x.(*item)
+	i := x.(*item[T])
 	i.index = n
 	*pq = append(*pq, i)
 }
 
-func (pq *priorityQueue) Pop() interface{} {
+func (pq *priorityQueue[T]) Pop() any {
 	old := *pq
 	n := len(old)
 	i := old[n-1]
@@ -158,13 +158,13 @@ func (pq *priorityQueue) Pop() interface{} {
 	return i
 }
 
-func (pq *priorityQueue) remove(i *item) {
+func (pq *priorityQueue[T]) remove(i *item[T]) {
 	if i.index >= 0 {
 		heap.Remove(pq, i.index)
 	}
 }
 
-func (pq *priorityQueue) prune(destructor func(v interface{}) error, callback func(key string)) error {
+func (pq *priorityQueue[T]) prune(destructor func(v T) error, callback func(key string)) error {
 	now := nowFunc()
 	for l := pq.Len(); l > 0; l = pq.Len() {
 		root := (*pq)[0]
@@ -172,7 +172,7 @@ func (pq *priorityQueue) prune(destructor func(v interface{}) error, callback fu
 			break
 		}
 		v := heap.Pop(pq)
-		i := v.(*item)
+		i := v.(*item[T])
 		callback(i.key)
 		if destructor != nil {
 			if err := destructor(i.value); err != nil {
